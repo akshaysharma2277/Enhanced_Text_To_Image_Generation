@@ -1,0 +1,82 @@
+model:
+  base_model: CompVis/stable-diffusion-v1-4
+  train_component: unet_only
+  vae: frozen
+  text_encoder: frozen
+
+lora:
+  enabled: true
+  rank: 4
+  alpha: 4
+  dropout: 0.0
+  target_modules:
+    - to_q
+    - to_k
+    - to_v
+    - to_out
+
+dataset:
+  train_jsonl: dataset/captions/train.jsonl
+  val_jsonl: dataset/captions/val.jsonl
+  image_root: .
+  total_pairs: 1395
+  train_pairs: 1255
+  val_pairs: 140
+  format: image_caption_pairs
+  sources:
+    - COCO
+    - Unsplash
+    - WikiArt
+  constraints:
+    min_attributes_per_caption: 2
+    strict_text_image_alignment: true
+
+preprocessing:
+  resolution: 512
+  resize: shortest_side
+  crop: center
+  normalization:
+    - -1.0
+    - 1.0
+
+training:
+  seed: 42
+  output_dir: outputs/sd14-lora-a10g
+  checkpointing_steps: 100
+  validation_steps: 50
+  num_val_batches: 4
+  optimizer: AdamW
+  learning_rate: 5.0e-5
+  warmup_steps: 500
+  batch_size: 2
+  max_steps: 430
+  gradient_accumulation_steps: 16
+  mixed_precision: fp16
+  max_grad_norm: 1.0
+  num_workers: 4
+  gradient_checkpointing: true
+  memory_efficient_attention: true
+
+loss:
+  denoise_loss: mse
+  clip_loss:
+    enabled: true
+    weight: 0.3
+    type: cosine
+  total_loss:
+    formula: denoise + 0.3 * clip
+
+clip:
+  model: openai/clip-vit-base-patch32
+  frozen: true
+  image_input:
+    source: decoded_rgb
+    resolution: 224
+  loss:
+    type: 1_minus_cosine_similarity
+
+gradient_flow:
+  unet: trainable_lora_only
+  vae: frozen_grad_flow_enabled
+  clip: frozen
+  path: clip_loss -> image -> vae -> latent -> unet_lora
